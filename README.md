@@ -1,10 +1,13 @@
 # TikTok integration
 
-A zero-dependency Node.js (18+) client for TikTok's official v2 Open APIs:
+A Node.js (18+) client for TikTok's official v2 Open APIs, plus account analytics and trend-based content suggestions:
 
 - **Login Kit**: OAuth 2.0 with PKCE, token exchange, refresh, revoke, and client credentials
 - **Display API**: user profile, list and query the user's videos (with pagination)
 - **Content Posting API**: post directly to a profile, send drafts to the inbox, upload chunked files, poll post status
+- **Insights**: analyze a creator's videos, research current TikTok trends with Claude and web search, and get concrete video ideas
+
+The TikTok client itself has no dependencies. The suggestions feature uses `@anthropic-ai/sdk`.
 
 ## Setup
 
@@ -86,6 +89,48 @@ Notes:
 ### Errors
 
 Every failed call throws a `TikTokError` with `code` (e.g. `access_token_invalid`, `invalid_grant`), `logId` (include this when you contact TikTok support), `status`, and the raw `body`.
+
+## Account analysis and video suggestions
+
+```sh
+npm install
+
+# Try it on the bundled sample data (a fictional cooking account)
+node examples/analyze.js --videos examples/sample-videos.json --no-suggest   # analytics only
+ANTHROPIC_API_KEY=sk-ant-... node examples/analyze.js --videos examples/sample-videos.json
+
+# Run it on a real account: the token needs the user.info.basic and video.list scopes
+TIKTOK_ACCESS_TOKEN=act.... ANTHROPIC_API_KEY=sk-ant-... \
+  node examples/analyze.js --tz America/New_York --niche "home cooking" --json report.json
+```
+
+In the demo server, a logged-in user can open `/insights` for the same report.
+
+It runs in two stages:
+
+1. **Analytics** (`analyzeVideos`, local and free). Pulls every video with view, like, comment and share counts, then reports:
+   - totals and medians, engagement rate, and posting cadence
+   - momentum: recent videos compared with earlier ones
+   - top, most-engaging and weakest videos
+   - how each weekday, 3-hour posting window, video length and repeated hashtag performs against the account's typical (median) views
+2. **Trends and ideas** (`suggestContent`). Claude (`claude-opus-5`) runs two requests:
+   - It uses the web search tool to research what's trending on TikTok right now (sounds, hashtags, formats, challenges, memes), steered toward the creator's niche.
+   - It combines that research with the analytics and returns structured JSON (`SUGGESTIONS_SCHEMA`): a summary, strengths and weaknesses, the relevant trends with source URLs, and video ideas. Each idea has a hook, a shot-by-shot outline, a caption, hashtags, a length, a posting time, and the data behind it. It ends with a one-week posting plan.
+
+```js
+import { TikTokClient, ANALYTICS_VIDEO_FIELDS, analyzeVideos, suggestContent } from './src/index.js';
+
+const videos = [];
+for await (const v of tiktok.iterateVideos(token, { fields: ANALYTICS_VIDEO_FIELDS })) videos.push(v);
+const analytics = analyzeVideos(videos, { timeZone: 'America/New_York' });
+const { suggestions, sources } = await suggestContent({ analytics, niche: 'home cooking', region: 'US' });
+```
+
+Notes:
+
+- TikTok has no public trends API for regular apps, so trends come from live web search. Each trend links its source; check them before you build a video around one.
+- The Display API only returns public counts for the user's own videos. It has no watch time, retention or follower-demographics data, which are only in TikTok Studio.
+- Requests opt into server-side refusal fallbacks (`fallbacks: "default"`). A suggestion run makes several web searches plus two model calls, so expect it to take a few minutes and to cost more than a single chat request.
 
 ## Tests
 

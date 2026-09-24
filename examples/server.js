@@ -7,7 +7,15 @@
 // Sessions are kept in memory; use a real session store in production.
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { TikTokClient, createState, createPkcePair } from '../src/index.js';
+import {
+  TikTokClient,
+  createState,
+  createPkcePair,
+  ANALYTICS_VIDEO_FIELDS,
+  analyzeVideos,
+  formatReport,
+  suggestContent,
+} from '../src/index.js';
 
 const { TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_REDIRECT_URI, PORT = 3000 } = process.env;
 if (!TIKTOK_CLIENT_KEY || !TIKTOK_CLIENT_SECRET || !TIKTOK_REDIRECT_URI) {
@@ -59,8 +67,33 @@ async function handle(req, res) {
        <ul>${videos
          .map((v) => `<li><a href="${escapeHtml(v.share_url)}">${escapeHtml(v.title || v.id)}</a></li>`)
          .join('')}</ul>
+       <p><a href="/insights">Analyze my account and suggest videos</a></p>
        <form method="post" action="/logout"><button>Disconnect</button></form>`,
     );
+  }
+
+  if (url.pathname === '/insights') {
+    if (!session.tokens) return send(res, 401, '<a href="/auth/tiktok">Log in first</a>');
+    const token = session.tokens.access_token;
+    const videos = [];
+    for await (const v of tiktok.iterateVideos(token, { fields: ANALYTICS_VIDEO_FIELDS })) videos.push(v);
+    const analytics = analyzeVideos(videos, { timeZone: url.searchParams.get('tz') || 'UTC' });
+    let ideas = '<p>Set ANTHROPIC_API_KEY to get trend-based video suggestions.</p>';
+    if (process.env.ANTHROPIC_API_KEY && videos.length) {
+      const { suggestions: s } = await suggestContent({ analytics, profile: await tiktok.getUserInfo(token) });
+      ideas = `<h2>Summary</h2><p>${escapeHtml(s.summary)}</p>
+        <h2>Current trends</h2><ul>${s.trends
+          .map((t) => `<li><b>${escapeHtml(t.name)}</b> (${escapeHtml(t.type)}): ${escapeHtml(t.description)}<br><i>${escapeHtml(t.relevance)}</i></li>`)
+          .join('')}</ul>
+        <h2>Video ideas</h2><ol>${s.suggestions
+          .map((v) => `<li><b>${escapeHtml(v.title)}</b><br>Hook: ${escapeHtml(v.hook)}<br>${escapeHtml(v.concept)}
+            <ul>${v.outline.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}</ul>
+            ${escapeHtml(v.caption)} ${escapeHtml(v.hashtags.join(' '))}<br>
+            ~${v.length_seconds}s · post ${escapeHtml(v.post_when)}<br><i>${escapeHtml(v.rationale)}</i></li>`)
+          .join('')}</ol>
+        <h2>This week</h2><p>${escapeHtml(s.posting_plan)}</p>`;
+    }
+    return send(res, 200, `<h1>Account analysis</h1><pre>${escapeHtml(formatReport(analytics))}</pre>${ideas}<p><a href="/">Back</a></p>`);
   }
 
   if (url.pathname === '/auth/tiktok') {

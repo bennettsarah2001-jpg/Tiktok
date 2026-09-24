@@ -9,3 +9,5 @@ export {
   DEFAULT_USER_FIELDS,
   DEFAULT_VIDEO_FIELDS,
 } from './client.js';
+export { analyzeVideos, formatReport, engagementRate, extractHashtags, ANALYTICS_VIDEO_FIELDS } from './analytics.js';
+export { suggestContent, describeCreator, SUGGESTIONS_SCHEMA, DEFAULT_MODEL } from './suggestions.js';
