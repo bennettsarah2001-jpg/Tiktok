@@ -1,0 +1,16 @@
+{
+  "name": "tiktok-integration",
+  "version": "0.1.0",
+  "description": "Zero-dependency client for TikTok's v2 Open APIs: Login Kit (OAuth 2.0), Display API and Content Posting API.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": "./src/index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test",
+    "example": "node examples/server.js"
+  },
+  "license": "MIT"
+}
